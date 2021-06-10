@@ -513,6 +513,12 @@ func setAppSettings(d *schema.ResourceData, settings *okta.ApplicationSettingsAp
 	return d.Set("app_settings_json", string(payload))
 }
 
+// setAppLinkSettings available appLinks vary widely depending on the application. Thus, we use a generic interface.
+func setAppLinkSettings(d *schema.ResourceData, appLinks interface{}) error {
+	payload, _ := json.Marshal(appLinks)
+	return d.Set("app_links_json", string(payload))
+}
+
 func setSamlSettings(d *schema.ResourceData, signOn *okta.SamlApplicationSettingsSignOn) error {
 	_ = d.Set("default_relay_state", signOn.DefaultRelayState)
 	_ = d.Set("sso_url", signOn.SsoAcsUrl)

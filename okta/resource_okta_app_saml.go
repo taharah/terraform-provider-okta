@@ -271,6 +271,16 @@ func resourceAppSaml() *schema.Resource {
 					return new == ""
 				},
 			},
+			"app_links_json": {
+				Type:             schema.TypeString,
+				Optional:         true,
+				Description:      "Application appLinks that can be published in JSON format",
+				ValidateDiagFunc: stringIsJSON,
+				StateFunc:        normalizeDataJSON,
+				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+					return new == ""
+				},
+			},
 			"acs_endpoints": {
 				Type:        schema.TypeSet,
 				Elem:        &schema.Schema{Type: schema.TypeString},
@@ -430,6 +440,11 @@ func resourceAppSamlRead(ctx context.Context, d *schema.ResourceData, m interfac
 		_ = d.Set("certificate", desc.KeyDescriptors[0].KeyInfo.Certificate)
 	}
 	appRead(d, app.Name, app.Status, app.SignOnMode, app.Label, app.Accessibility, app.Visibility)
+	if app.Visibility.AppLinks != nil {
+		if err = setAppLinkSettings(d, app.Visibility.AppLinks); err != nil {
+			return diag.Errorf("failed to get SAML app's appLinks: %v", err)
+		}
+	}
 	err = syncGroupsAndUsers(ctx, app.Id, d, m)
 	if err != nil {
 		return diag.Errorf("failed to sync groups and users for SAML application: %v", err)
@@ -513,7 +528,7 @@ func buildSamlApp(d *schema.ResourceData) (*okta.SamlApplication, error) {
 	hideMobile := d.Get("hide_ios").(bool)
 	hideWeb := d.Get("hide_web").(bool)
 	a11ySelfService := d.Get("accessibility_self_service").(bool)
-	app.Settings = okta.NewSamlApplicationSettings()
+
 	app.Visibility = &okta.ApplicationVisibility{
 		AutoSubmitToolbar: &autoSubmit,
 		Hide: &okta.ApplicationVisibilityHide{
@@ -521,6 +536,13 @@ func buildSamlApp(d *schema.ResourceData) (*okta.SamlApplication, error) {
 			Web: &hideWeb,
 		},
 	}
+	if appLinkSettings, ok := d.GetOk("app_links_json"); ok {
+		var settings interface{}
+		_ = json.Unmarshal([]byte(appLinkSettings.(string)), &settings)
+		app.Visibility.AppLinks = &settings
+	}
+
+	app.Settings = okta.NewSamlApplicationSettings()
 	if appSettings, ok := d.GetOk("app_settings_json"); ok {
 		payload := map[string]interface{}{}
 		_ = json.Unmarshal([]byte(appSettings.(string)), &payload)
