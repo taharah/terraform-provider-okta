@@ -41,7 +41,7 @@ func resourceAppSaml() *schema.Resource {
 		},
 		// For those familiar with Terraform schemas be sure to check the base application schema and/or
 		// the examples in the documentation
-		Schema: buildAppSchema(map[string]*schema.Schema{
+		Schema: buildAppSchemaWithVisibility(map[string]*schema.Schema{
 			"preconfigured_app": {
 				Type:        schema.TypeString,
 				Optional:    true,
@@ -102,24 +102,6 @@ func resourceAppSaml() *schema.Resource {
 				Type:        schema.TypeString,
 				Description: "Entity URL for instance http://www.okta.com/exk1fcia6d6EMsf331d8",
 				Computed:    true,
-			},
-			"auto_submit_toolbar": {
-				Type:        schema.TypeBool,
-				Optional:    true,
-				Default:     false,
-				Description: "Display auto submit toolbar",
-			},
-			"hide_ios": {
-				Type:        schema.TypeBool,
-				Optional:    true,
-				Default:     false,
-				Description: "Do not display application icon on mobile app",
-			},
-			"hide_web": {
-				Type:        schema.TypeBool,
-				Optional:    true,
-				Default:     false,
-				Description: "Do not display application icon to users",
 			},
 			"default_relay_state": {
 				Type:        schema.TypeString,
@@ -271,16 +253,6 @@ func resourceAppSaml() *schema.Resource {
 					return new == ""
 				},
 			},
-			"app_links_json": {
-				Type:             schema.TypeString,
-				Optional:         true,
-				Description:      "Application appLinks that can be published in JSON format",
-				ValidateDiagFunc: stringIsJSON,
-				StateFunc:        normalizeDataJSON,
-				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
-					return new == ""
-				},
-			},
 			"acs_endpoints": {
 				Type:        schema.TypeSet,
 				Elem:        &schema.Schema{Type: schema.TypeString},
@@ -417,6 +389,7 @@ func resourceAppSamlRead(ctx context.Context, d *schema.ResourceData, m interfac
 	_ = d.Set("user_name_template_suffix", app.Credentials.UserNameTemplate.Suffix)
 	_ = d.Set("preconfigured_app", app.Name)
 	_ = d.Set("logo_url", linksValue(app.Links, "logo", "href"))
+	_ = d.Set("login_link_url", linksValue(app.Links, "appLinks", "href"))
 	if app.Credentials.Signing.Kid != "" && app.Status != statusInactive {
 		keyID := app.Credentials.Signing.Kid
 		_ = d.Set("key_id", keyID)
@@ -440,11 +413,6 @@ func resourceAppSamlRead(ctx context.Context, d *schema.ResourceData, m interfac
 		_ = d.Set("certificate", desc.KeyDescriptors[0].KeyInfo.Certificate)
 	}
 	appRead(d, app.Name, app.Status, app.SignOnMode, app.Label, app.Accessibility, app.Visibility)
-	if app.Visibility.AppLinks != nil {
-		if err = setAppLinkSettings(d, app.Visibility.AppLinks); err != nil {
-			return diag.Errorf("failed to get SAML app's appLinks: %v", err)
-		}
-	}
 	err = syncGroupsAndUsers(ctx, app.Id, d, m)
 	if err != nil {
 		return diag.Errorf("failed to sync groups and users for SAML application: %v", err)
@@ -527,22 +495,19 @@ func buildSamlApp(d *schema.ResourceData) (*okta.SamlApplication, error) {
 	autoSubmit := d.Get("auto_submit_toolbar").(bool)
 	hideMobile := d.Get("hide_ios").(bool)
 	hideWeb := d.Get("hide_web").(bool)
+	loginLink := d.Get("login_link").(bool)
 	a11ySelfService := d.Get("accessibility_self_service").(bool)
-
+	app.Settings = okta.NewSamlApplicationSettings()
 	app.Visibility = &okta.ApplicationVisibility{
 		AutoSubmitToolbar: &autoSubmit,
 		Hide: &okta.ApplicationVisibilityHide{
 			IOS: &hideMobile,
 			Web: &hideWeb,
 		},
+		AppLinks: map[string]*bool{
+			"login": &loginLink,
+		},
 	}
-	if appLinkSettings, ok := d.GetOk("app_links_json"); ok {
-		var settings interface{}
-		_ = json.Unmarshal([]byte(appLinkSettings.(string)), &settings)
-		app.Visibility.AppLinks = &settings
-	}
-
-	app.Settings = okta.NewSamlApplicationSettings()
 	if appSettings, ok := d.GetOk("app_settings_json"); ok {
 		payload := map[string]interface{}{}
 		_ = json.Unmarshal([]byte(appSettings.(string)), &payload)

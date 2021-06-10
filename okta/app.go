@@ -107,6 +107,17 @@ var appVisibilitySchema = map[string]*schema.Schema{
 		Default:     false,
 		Description: "Do not display application icon to users",
 	},
+	"login_link": {
+		Type:        schema.TypeBool,
+		Optional:    true,
+		Default:     false,
+		Description: "Create application login link",
+	},
+	"login_link_url": {
+		Type:        schema.TypeString,
+		Computed:    true,
+		Description: "URL of the application's login link",
+	},
 }
 
 var baseAppSwaSchema = map[string]*schema.Schema{
@@ -511,12 +522,6 @@ func setAppSettings(d *schema.ResourceData, settings *okta.ApplicationSettingsAp
 	}
 	payload, _ := json.Marshal(flatMap)
 	return d.Set("app_settings_json", string(payload))
-}
-
-// setAppLinkSettings available appLinks vary widely depending on the application. Thus, we use a generic interface.
-func setAppLinkSettings(d *schema.ResourceData, appLinks interface{}) error {
-	payload, _ := json.Marshal(appLinks)
-	return d.Set("app_links_json", string(payload))
 }
 
 func setSamlSettings(d *schema.ResourceData, signOn *okta.SamlApplicationSettingsSignOn) error {
